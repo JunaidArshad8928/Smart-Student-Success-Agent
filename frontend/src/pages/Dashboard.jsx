@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { 
   CheckSquare, 
   Clock, 
@@ -7,55 +7,43 @@ import {
   Calendar,
   AlertCircle,
   TrendingUp,
-  ArrowRight
+  ArrowRight,
+  Target,
+  Flame,
+  Brain,
+  ChevronRight
 } from "lucide-react";
 
 export default function Dashboard({ setCurrentPage }) {
-  const [plannerData, setPlannerData] = useState(null);
-  const [completedTaskIds, setCompletedTaskIds] = useState([]);
-  const [stats, setStats] = useState({
-    studyHours: 0,
-    completedTasksCount: 0,
-    totalTasksCount: 0,
-    quizScoreAverage: 82,
-    recommendedProjects: 0
-  });
-
-  useEffect(() => {
-    // Load planner data from localstorage
+  const [plannerData] = useState(() => {
     const storedPlan = localStorage.getItem("active_study_plan");
-    const completedTasks = localStorage.getItem("completed_study_tasks");
+    try {
+      return storedPlan ? JSON.parse(storedPlan) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [completedTaskIds] = useState(() => {
+    const storedTasks = localStorage.getItem("completed_study_tasks");
+    try {
+      return storedTasks ? JSON.parse(storedTasks) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [stats] = useState(() => {
     const storedProjects = localStorage.getItem("saved_projects_count");
     const storedQuizzes = localStorage.getItem("quiz_scores");
-
-    let parsedPlan = null;
-    let parsedCompleted = [];
-    
-    if (storedPlan) {
-      try {
-        parsedPlan = JSON.parse(storedPlan);
-        setPlannerData(parsedPlan);
-      } catch (e) {}
-    }
-
-    if (completedTasks) {
-      try {
-        parsedCompleted = JSON.parse(completedTasks);
-        setCompletedTaskIds(parsedCompleted);
-      } catch (e) {}
-    }
-
-    // Process statistics
     let totalTasks = 0;
-    let completedCount = parsedCompleted.length;
+    let completedCount = completedTaskIds.length;
     let hours = 0;
 
-    if (parsedPlan && parsedPlan.weekly_schedule) {
-      parsedPlan.weekly_schedule.forEach(week => {
+    if (plannerData?.weekly_schedule) {
+      plannerData.weekly_schedule.forEach(week => {
         if (week.days) {
           week.days.forEach(day => {
             totalTasks += 1;
-            if (parsedCompleted.includes(`${week.week_number}-${day.day_name}`)) {
+            if (completedTaskIds.includes(`${week.week_number}-${day.day_name}`)) {
               hours += day.duration_hours;
             }
           });
@@ -75,18 +63,19 @@ export default function Dashboard({ setCurrentPage }) {
         if (scores.length > 0) {
           avgQuiz = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
         }
-      } catch (e) {}
+      } catch {
+        avgQuiz = 82;
+      }
     }
 
-    setStats({
+    return {
       studyHours: parseFloat(hours.toFixed(1)),
       completedTasksCount: completedCount,
       totalTasksCount: totalTasks,
       quizScoreAverage: avgQuiz,
       recommendedProjects: storedProjects ? parseInt(storedProjects, 10) : 1
-    });
-
-  }, []);
+    };
+  });
 
   // Filter tasks to show today's agenda (or a list of pending tasks)
   const getPendingAgenda = () => {
@@ -117,8 +106,53 @@ export default function Dashboard({ setCurrentPage }) {
     ? Math.round((stats.completedTasksCount / stats.totalTasksCount) * 100) 
     : 0;
 
+  const weeklyAnalytics = plannerData?.weekly_schedule?.map((week) => {
+    const plannedHours = week.days.reduce((sum, day) => sum + Number(day.duration_hours || 0), 0);
+    const completedDays = week.days.filter((day) => completedTaskIds.includes(`${week.week_number}-${day.day_name}`)).length;
+    const completedHours = week.days.reduce((sum, day) => (
+      completedTaskIds.includes(`${week.week_number}-${day.day_name}`)
+        ? sum + Number(day.duration_hours || 0)
+        : sum
+    ), 0);
+
+    return {
+      label: `Week ${week.week_number}`,
+      plannedHours,
+      completedHours,
+      completedDays,
+      completion: plannedHours ? Math.round((completedHours / plannedHours) * 100) : 0
+    };
+  }) || [
+    { label: "Week 1", plannedHours: 10, completedHours: 7, completedDays: 2, completion: 70 },
+    { label: "Week 2", plannedHours: 12, completedHours: 9, completedDays: 2, completion: 75 },
+    { label: "Week 3", plannedHours: 14, completedHours: 8, completedDays: 2, completion: 57 },
+    { label: "Week 4", plannedHours: 16, completedHours: 12, completedDays: 3, completion: 75 }
+  ];
+
+  const strongestWeek = weeklyAnalytics.reduce((best, week) => (
+    week.completion > best.completion ? week : best
+  ), weeklyAnalytics[0]);
+  const totalPlannedHours = weeklyAnalytics.reduce((sum, week) => sum + week.plannedHours, 0);
+  const consistencyScore = totalPlannedHours
+    ? Math.round((weeklyAnalytics.reduce((sum, week) => sum + week.completedHours, 0) / totalPlannedHours) * 100)
+    : 0;
+  const focusScore = Math.min(100, Math.round((stats.quizScoreAverage * 0.6) + (completionPercentage * 0.4)));
+  const maxHours = Math.max(...weeklyAnalytics.map((week) => week.plannedHours), 1);
+
   return (
     <div className="space-y-8 animate-fade-in pb-12">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Learning analytics</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-text-primary">Your progress, in focus.</h1>
+          <p className="mt-1 text-xs text-text-secondary">A clear read on your study rhythm, follow-through, and next best move.</p>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-success/20 bg-success/5 px-3 py-2 text-[10px] font-bold text-success">
+          <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+          {stats.completedTasksCount > 0 ? "Momentum is building" : "Ready to begin"}
+        </div>
+      </div>
+
       {/* Stats Widgets */}
       <section className="grid gap-6 grid-cols-2 lg:grid-cols-4">
         {/* Hours Studied */}
@@ -172,7 +206,7 @@ export default function Dashboard({ setCurrentPage }) {
 
       {/* Grid Layout for Graphs & Agenda */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* SVG Performance Chart */}
+        {/* Weekly performance chart */}
         <div className="glass-card lg:col-span-2 rounded-2xl border p-6 bg-bg-card flex flex-col justify-between">
           <div className="flex items-center justify-between pb-4">
             <div>
@@ -182,52 +216,21 @@ export default function Dashboard({ setCurrentPage }) {
               </h3>
               <p className="text-[10px] text-text-muted">Visualizing learning intensity (target hours vs completed)</p>
             </div>
-            <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-1 rounded">Last 4 Weeks</span>
+            <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-1 rounded">{weeklyAnalytics.length} week view</span>
           </div>
 
-          {/* SVG Chart */}
-          <div className="w-full h-48 flex items-end justify-center py-2">
-            <svg viewBox="0 0 400 150" className="w-full h-full">
-              {/* Grid Lines */}
-              <line x1="0" y1="30" x2="400" y2="30" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
-              <line x1="0" y1="75" x2="400" y2="75" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
-              <line x1="0" y1="120" x2="400" y2="120" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
-
-              {/* Weekly columns bars */}
-              {/* Week 1 */}
-              <rect x="50" y="50" width="24" height="70" rx="3" fill="url(#primaryGrad)" opacity="0.8" />
-              <rect x="50" y="80" width="24" height="40" rx="3" fill="#10b981" />
-              
-              {/* Week 2 */}
-              <rect x="140" y="30" width="24" height="90" rx="3" fill="url(#primaryGrad)" opacity="0.8" />
-              <rect x="140" y="60" width="24" height="60" rx="3" fill="#10b981" />
-
-              {/* Week 3 */}
-              <rect x="230" y="40" width="24" height="80" rx="3" fill="url(#primaryGrad)" opacity="0.8" />
-              <rect x="230" y="90" width="24" height="30" rx="3" fill="#10b981" />
-
-              {/* Week 4 */}
-              <rect x="320" y="20" width="24" height="100" rx="3" fill="url(#primaryGrad)" opacity="0.8" />
-              {plannerData ? (
-                <rect x="320" y="120 - stats.completedTasksCount * 5" width="24" height={stats.completedTasksCount * 5} rx="3" fill="#10b981" />
-              ) : (
-                <rect x="320" y="45" width="24" height="75" rx="3" fill="#10b981" />
-              )}
-
-              {/* X Axis Labels */}
-              <text x="62" y="140" fill="#64748b" fontSize="10" textAnchor="middle">Week 1</text>
-              <text x="152" y="140" fill="#64748b" fontSize="10" textAnchor="middle">Week 2</text>
-              <text x="242" y="140" fill="#64748b" fontSize="10" textAnchor="middle">Week 3</text>
-              <text x="332" y="140" fill="#64748b" fontSize="10" textAnchor="middle">Week 4</text>
-
-              {/* Gradients */}
-              <defs>
-                <linearGradient id="primaryGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6366f1" />
-                  <stop offset="100%" stopColor="#4f46e5" />
-                </linearGradient>
-              </defs>
-            </svg>
+          <div className="flex h-48 items-end gap-3 border-b border-border-card/30 px-2 py-3 sm:gap-6">
+            {weeklyAnalytics.map((week) => (
+              <div key={week.label} className="group relative flex h-full flex-1 items-end justify-center gap-1.5">
+                <div className="relative flex h-full w-3 items-end rounded-t bg-primary/15 sm:w-5" style={{ height: `${Math.max(12, (week.plannedHours / maxHours) * 100)}%` }}>
+                  <div className="w-full rounded-t bg-primary transition-all duration-500 group-hover:bg-primary-hover" style={{ height: `${week.completion}%` }} />
+                </div>
+                <div className="relative flex h-full w-3 items-end rounded-t bg-success/15 sm:w-5" style={{ height: `${Math.max(12, (week.completedHours / maxHours) * 100)}%` }}>
+                  <div className="w-full rounded-t bg-success transition-all duration-500" style={{ height: "100%" }} />
+                </div>
+                <span className="absolute -bottom-7 text-[9px] text-text-muted">{week.label.replace("Week ", "W")}</span>
+              </div>
+            ))}
           </div>
 
           <div className="flex gap-4 justify-center text-[10px] text-text-secondary pt-3 border-t border-border-card/20">
@@ -298,6 +301,48 @@ export default function Dashboard({ setCurrentPage }) {
           )}
         </div>
       </div>
+
+      <section className="grid gap-6 lg:grid-cols-3">
+        <div className="glass-card rounded-2xl border p-6 bg-bg-card lg:col-span-2">
+          <div className="flex items-center justify-between border-b border-border-card/30 pb-4">
+            <div>
+              <h3 className="flex items-center gap-1.5 text-sm font-bold text-text-primary"><Target className="h-4 w-4 text-primary" /> Skill-building signals</h3>
+              <p className="mt-1 text-[10px] text-text-muted">Small indicators that show whether your routine is working.</p>
+            </div>
+            <TrendingUp className="h-5 w-5 text-success" />
+          </div>
+          <div className="grid gap-4 pt-5 sm:grid-cols-3">
+            <div className="rounded-xl border border-border-card bg-bg-dark/30 p-4">
+              <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Consistency</span><span className="text-xs font-bold text-success">{consistencyScore}%</span></div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-bg-card-hover"><div className="h-full rounded-full bg-success" style={{ width: `${consistencyScore}%` }} /></div>
+              <p className="mt-2 text-[10px] text-text-secondary">Plan completion across all weeks</p>
+            </div>
+            <div className="rounded-xl border border-border-card bg-bg-dark/30 p-4">
+              <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Focus score</span><span className="text-xs font-bold text-secondary">{focusScore}%</span></div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-bg-card-hover"><div className="h-full rounded-full bg-secondary" style={{ width: `${focusScore}%` }} /></div>
+              <p className="mt-2 text-[10px] text-text-secondary">Quiz results plus task follow-through</p>
+            </div>
+            <div className="rounded-xl border border-border-card bg-bg-dark/30 p-4">
+              <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Best week</span><Flame className="h-4 w-4 text-warning" /></div>
+              <p className="text-lg font-bold text-text-primary">{strongestWeek?.label || "No data"}</p>
+              <p className="mt-1 text-[10px] text-text-secondary">{strongestWeek?.completion || 0}% of planned hours completed</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-card rounded-2xl border p-6 bg-bg-card">
+          <h3 className="flex items-center gap-1.5 border-b border-border-card/30 pb-4 text-sm font-bold text-text-primary"><Brain className="h-4 w-4 text-secondary" /> Next best move</h3>
+          <div className="space-y-4 pt-5">
+            <p className="text-sm font-semibold leading-relaxed text-text-primary">
+              {completionPercentage >= 80 ? "Keep your rhythm and raise the challenge slightly." : "Complete one pending study block to lift your momentum."}
+            </p>
+            <p className="text-xs leading-relaxed text-text-secondary">{pendingAgenda[0]?.activity || "Create a study plan to turn your goals into measurable progress."}</p>
+            <button onClick={() => setCurrentPage("planner")} className="flex w-full items-center justify-between rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 text-xs font-bold text-primary transition hover:bg-primary/20">
+              {pendingAgenda.length ? "Continue study plan" : "Create your first plan"}<ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
