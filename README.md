@@ -16,11 +16,6 @@
 
 👉 [Explore the Smart Student Success Agent](https://smart-student-success-agent.vercel.app)
 
-## 📂 GitHub Repository
-
-👉 [View Source on GitHub](https://github.com/Kashif-Mustari/Smart-Student-Success-Agent)
-
----
 
 ## 🎯 Problem Statement
 
